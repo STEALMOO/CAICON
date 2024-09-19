@@ -56,8 +56,8 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root='/root/caicon/',
-        ann_file='val_data.json',
-        data_prefix=dict(img='resized_val/images/'),
+        ann_file='test_data.json',
+        data_prefix=dict(img='resized_test/images/'),
         test_mode=True,
         pipeline=test_pipeline,
         backend_args=backend_args))
@@ -68,7 +68,7 @@ val_evaluator = dict(
     type='CocoMetric',
     metric='bbox',
     format_only=True,
-    ann_file=data_root + 'val_data.json', # 
+    ann_file=data_root + 'test_data.json', # 
     backend_args=backend_args,
     outfile_prefix='/root/caicon'
     )
