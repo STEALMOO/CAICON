@@ -1,0 +1,84 @@
+import pandas as pd
+import ast
+import json
+from ensemble_boxes import weighted_boxes_fusion
+
+# CSV 파일 경로 설정
+
+submission_csv_path = '26+27+29.csv' # submission_1 파일 경로
+reference_csv_path = 'Epoch_30.csv'  # 0.435554 파일 경로
+
+# CSV 파일 로드
+submission_df = pd.read_csv(submission_csv_path)
+reference_df = pd.read_csv(reference_csv_path)
+
+# 'labels' 컬럼을 리스트로 변환하는 함수
+def convert_labels_to_list(labels):
+    return ast.literal_eval(labels)
+
+# 'labels' 컬럼을 리스트로 변환
+submission_df['labels'] = submission_df['labels'].apply(convert_labels_to_list)
+reference_df['labels'] = reference_df['labels'].apply(convert_labels_to_list)
+
+def convert_to_xywh(boxes):
+    new_boxes = []
+    for box in boxes:
+        x1, y1, x2, y2 = box
+        width = x2 - x1
+        height = y2 - y1
+        x_center = x1 + width / 2
+        y_center = y1 + height / 2
+        new_boxes.append([x_center, y_center, width, height])
+    return new_boxes
+
+# WBF 적용 함수
+def apply_wbf(row):
+    ref_labels = row['labels_ref']
+    sub_labels = row['labels_sub']
+    
+    # reference 파일과 submission 파일의 바운딩 박스 정보를 결합
+    boxes_list = []
+    scores_list = []
+    labels_list = []
+    
+    for label in ref_labels:
+        if label['conf']>0.095:
+            boxes_list.append([label['x']-(label['w']/2), label['y']-(label['h']/2),label['x']+(label['w']/2), label['y']+(label['h']/2)])
+            scores_list.append(label['conf'])
+            labels_list.append(label['class_id'])
+    
+    for label in ref_labels:
+        if isinstance(label, dict):  # 각 label이 딕셔너리인지 확인
+            if label['conf']>0.095:
+                boxes_list.append([label['x'] - (label['w'] / 2), label['y'] - (label['h'] / 2), label['x'] + (label['w'] / 2), label['y'] + (label['h'] / 2)])
+                scores_list.append(label['conf'])
+                labels_list.append(label['class_id'])
+    
+    # WBF 앙상블 적용
+    boxes, scores, labels = weighted_boxes_fusion([boxes_list], [scores_list], [labels_list], iou_thr=0.55)
+    
+    
+    # 최종 앙상블된 결과를 저장
+    final_labels = []
+    boxes = convert_to_xywh(boxes)
+    for i, box in enumerate(boxes):
+        final_labels.append({
+            'class_id': int(labels[i]),
+            'conf': scores[i],
+            'x': box[0],
+            'y': box[1],
+            'w': box[2],
+            'h': box[3]
+        })
+    
+    return json.dumps(final_labels)
+
+# 두 DataFrame을 id를 기준으로 병합
+merged_df = pd.merge(reference_df, submission_df, on='id', how='left', suffixes=('_ref', '_sub'))
+
+# WBF 적용
+merged_df['labels'] = merged_df.apply(apply_wbf, axis=1)
+
+# 결과 CSV로 저장
+merged_df_final = merged_df[['id', 'labels']]
+merged_df_final.to_csv('26+27+29+30.csv', index=False)
